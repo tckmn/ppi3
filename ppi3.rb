@@ -117,5 +117,34 @@ def preprocess config
 end
 
 if __FILE__ == $0
-    puts preprocess STDIN.read
+
+    require 'optparse'
+    options = {}
+    OptionParser.new do |opts|
+        opts.banner = 'usage: ppi3 [input-file [output-file]]'
+        opts.on('-h', '--help', 'output this help text') do
+            puts opts
+            exit
+        end
+        opts.on('-v', '--version', 'output the version of ppi3') do
+            puts 'ppi3 version 0.0.1'
+            exit
+        end
+    end.parse!
+
+    infile = STDIN
+    outfile = STDOUT
+    if infile = ARGV.shift
+        infile = infile == '-' ? STDIN : File.open(infile, ?r)
+        if outfile = ARGV.shift
+            outfile = outfile == '-' ? STDOUT : File.open(outfile, ?w)
+        else
+            outfile = STDOUT
+        end
+    else
+        infile = STDIN
+    end
+
+    outfile.write preprocess infile.read
+
 end
