@@ -1,0 +1,267 @@
+.TH PPI3 1 "2017-01-10"
+.SH NAME
+ppi3 \- preprocessor for the i3 window manager
+.SH SYNOPSIS
+.B ppi3
+[\fIinput-file\fR [\fIoutput-file\fR]]
+.br
+.B ppi3
+\fB\-h\fR
+.br
+.B ppi3
+\fB\-v\fR
+.br
+.SH DESCRPTION
+.B ppi3
+is a preprocessor aimed at reducing the verbosity of config files for the i3
+window manager.
+.SH OPTIONS
+.TP
+.BR \-h
+Output a help message.
+.TP
+.BR \-v
+Output the currently installed version of ppi3.
+.SH SYNTAX
+.SS Line continuation
+.PP
+A backslash at the end of a line (optionally followed by any amount of
+whitespace, optionally followed by a comment) will combine the following line
+with the line that it is on before any processing is done.
+.SS Groups
+.PP
+The purpose of groups is to enable large sections of a config file to be
+repeated elsewhere. This is mostly useful to repeat a group of default or
+"base" bindings within modes, as bindings made outside of modes do not persist
+inside of them.
+.PP
+Groups can be created as follows:
+.RS
+.PP
+.nf
+\fBgroup "\fR\fIname\fR\fB" {\fR
+    ...
+\fB}\fR
+.fi
+.RE
+.PP
+The contents of the group are copied into the output at the location of the
+group, and they may be recalled at a different part of the config file like so:
+.RS
+.PP
+.nf
+\fB{{ $\fR\fIname\fR\fB }}\fR
+.fi
+.RE
+.PP
+(See the \fBInterpolation\fR section below.)
+.SS Definitions
+.PP
+Definitions serve the primary purpose of saving or computing a block of text or
+a value for future use without actually outputting it at the point of the
+definition. The syntax for definitions is:
+.RS
+.PP
+.nf
+\fBdefine "\fR\fIname\fR\fB" {\fR
+    ...
+\fB}\fR
+.fi
+.RE
+.PP
+The contents of the definition are then evaluated as Ruby code and assigned to
+\fB$\fR\fIname\fR, which can be used within interpolations (see below).
+.SS Interpolation
+.PP
+Embedded Ruby code, or interpolation, can be used for any purpose within the
+config file. Anything between pairs of double braces (\fB{{\fR ... \fB}}\fR)
+will be evaluated as Ruby code; the result is inserted into the output.
+.PP
+Interpolation is also used to insert the stored values from \fBgroup\fR or
+\fBdefine\fR operations. For example, the output of:
+.RS
+.PP
+.nf
+define "example" { 1 + 1 }
+{{ $example }}
+.fi
+.RE
+.PP
+is 2.
+.PP
+Output can be suppressed with a \fBnil\fR directly before the \fB}}\fR; this is
+helpful, for example, when defining utility functions:
+.RS
+.PP
+.nf
+{{
+    def mousemove s
+        ("exec xdotool mousemove_relative --" +
+            " {-X,0,0,X,-X,X,-X,X}" +
+            " {0,X,-X,0,-X,-X,X,X}").gsub ?X, s.to_s
+    end
+    nil
+}}
+mode "mouse" {
+    bindsym {h,j,k,l,y,u,b,n} {{ mousemove 30 }}
+    bindsym KP_{4,2,8,6,7,9,1,3} {{ mousemove 10 }}
+}
+.fi
+.RE
+.SS Expansion
+.PP
+The most distinctive and useful feature of ppi3, expansion is similar to the
+brace expansion syntax used by shells such as bash. Expansion allows lines
+consisting of predominantly repeated parts to be concisely and readably
+collapsed.
+.PP
+In an expansion, repetitive text is specified normally, but tokens that vary
+are comma-separated (\fB,\fR) and placed in braces (\fB{}\fR). The line is then
+repeated as many times as necessary, and each token is substituted into the
+line. For example:
+.RS
+.PP
+.nf
+bindsym {Return,Escape,space} mode "default"
+.fi
+.RE
+.PP
+expands to:
+.RS
+.PP
+.nf
+bindsym Return mode "default"
+bindsym Escape mode "default"
+bindsym space mode "default
+.fi
+.RE
+.PP
+Furthermore, multiple expansions on the same line will expand in parallel. For
+example:
+.RS
+.PP
+.nf
+bindsym $mod+{h,j,k,l} focus {left,down,up,right}
+.fi
+.RE
+.PP
+will become:
+.RS
+.PP
+.nf
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+.fi
+.RE
+.PP
+To specify which expansions match with each other and expand in parallel,
+expansions may be identified with a group name followed by a vertical bar
+(\fB|\fR):
+.RS
+.PP
+.nf
+bindsym $mod{2|,+Shift}+{1|h,j,k,l} \\
+    {2|focus,move} {1|left,down,up,right}
+.fi
+.RE
+.PP
+results in:
+.RS
+.PP
+.nf
+bindsym $mod+h focus left
+bindsym $mod+Shift+h move left
+bindsym $mod+j focus down
+bindsym $mod+Shift+j move down
+bindsym $mod+k focus up
+bindsym $mod+Shift+k move up
+bindsym $mod+l focus right
+bindsym $mod+Shift+l move right
+.fi
+.RE
+.PP
+The \fB1\fR and \fB2\fR can, of course, be substituted for an arbitrary string.
+.PP
+Ranges, both numerical and alphabetical, are supported with the \fB..\fR syntax:
+.RS
+.PP
+.nf
+bindsym $mod+{1..9,0} workspace number {1..10}
+bindsym {a..z} mark {a..z}; mode "default"
+.fi
+.RE
+.PP
+become:
+.RS
+.PP
+.nf
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+\[char46]..
+bindsym $mod+0 workspace number 10
+bindsym a mark a; mode "default"
+bindsym b mark b; mode "default"
+\[char46]..
+bindsym z mark z; mode "default"
+.fi
+.RE
+.PP
+Finally, parallel expansions of unequal length "wrap around," using modular
+indexing:
+.RS
+.PP
+.nf
+bindsym $mod+{h,j,k,l,Left,Down,Up,Right} \\
+    focus {left,down,up,right}
+.fi
+.RE
+.PP
+expands to:
+.RS
+.PP
+.nf
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+.fi
+.RE
+.SH EXAMPLES
+.PP
+An advanced example that utilizes the quirks of ppi3's parsing rules follows:
+.RS
+.PP
+.nf
+bindsym $mod+Shift+equal {{?\\\\}}
+  workspace number {2..10}; move \\
+    workspace to output HDMI2; {{?\\\\}}
+  nop
+.fi
+.RE
+.PP
+Interpolation is parsed after line continuations (parse rules are listed above
+in order of their applications), so immediately before the expansion step, this
+will have been parsed to:
+.RS
+.PP
+.nf
+bindsym $mod+Shift+equal \\
+workspace number {2..10}; move workspace to output HDMI2; \\
+nop
+.fi
+.RE
+.PP
+Note that the expansion will now work as intended, and since i3 also has line
+continuation support, the final result will be a single command. This is a
+convenient pattern for when the results of an expansion need to be joined on
+the same line.
+.SH BUGS
+Probably?
+.SH AUTHOR
+KeyboardFire <andy@keyboardfire.com>
